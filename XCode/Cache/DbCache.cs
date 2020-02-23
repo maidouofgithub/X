@@ -59,9 +59,9 @@ namespace NewLife.Caching
 
         /// <summary>销毁</summary>
         /// <param name="disposing"></param>
-        protected override void OnDispose(Boolean disposing)
+        protected override void Dispose(Boolean disposing)
         {
-            base.OnDispose(disposing);
+            base.Dispose(disposing);
 
             clearTimer.TryDispose();
             clearTimer = null;
@@ -263,14 +263,14 @@ namespace NewLife.Caching
         /// <param name="threads">线程</param>
         /// <param name="rand">随机读写</param>
         /// <param name="batch">批量操作</param>
-        public override void BenchOne(Int64 times, Int32 threads, Boolean rand, Int32 batch)
+        public override Int64 BenchOne(Int64 times, Int32 threads, Boolean rand, Int32 batch)
         {
             if (rand)
                 times *= 1;
             else
                 times *= 1000;
 
-            base.BenchOne(times, threads, rand, batch);
+            return base.BenchOne(times, threads, rand, batch);
         }
         #endregion
     }

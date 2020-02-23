@@ -1,15 +1,14 @@
 ﻿using System;
 using System.ComponentModel;
-using NewLife;
-using NewLife.Xml;
+using NewLife.Configuration;
 using XCode.DataAccessLayer;
 
 namespace XCode
 {
     /// <summary>XCode设置</summary>
     [DisplayName("XCode设置")]
-    [XmlConfigFile(@"Config\XCode.config", 15000)]
-    public class Setting : XmlConfig<Setting>
+    [Config("XCode")]
+    public class Setting : Config<Setting>
     {
         #region 属性
         /// <summary>是否启用调试。默认启用</summary>
@@ -40,13 +39,13 @@ namespace XCode
         [Description("参数化添删改查。默认关闭")]
         public Boolean UseParameter { get; set; }
 
-        /// <summary>SQLite数据库默认目录。没有设置连接字符串的连接默认创建SQLite连接，数据库放在该目录</summary>
-        [Description("SQLite默认目录。没有设置连接字符串的连接默认创建SQLite连接，数据库放在该目录")]
-        public String SQLiteDbPath { get; set; } = "";
+        ///// <summary>SQLite数据库默认目录。没有设置连接字符串的连接默认创建SQLite连接，数据库放在该目录</summary>
+        //[Description("SQLite默认目录。没有设置连接字符串的连接默认创建SQLite连接，数据库放在该目录")]
+        //public String SQLiteDbPath { get; set; } = "";
 
-        /// <summary>备份目录。备份数据库时存放的目录</summary>
-        [Description("备份目录。备份数据库时存放的目录")]
-        public String BackupPath { get; set; } = "";
+        ///// <summary>备份目录。备份数据库时存放的目录</summary>
+        //[Description("备份目录。备份数据库时存放的目录")]
+        //public String BackupPath { get; set; } = "";
 
         /// <summary>命令超时。查询执行超时时间，默认0秒不限制</summary>
         [Description("命令超时。查询执行超时时间，默认0秒不限制")]
@@ -71,17 +70,21 @@ namespace XCode
         /// <summary>反向工程。Off 关闭；ReadOnly 只读不执行；On 打开，仅新建；Full 完全，修改删除</summary>
         [Description("反向工程。Off 关闭；ReadOnly 只读不执行；On 打开，仅新建；Full 完全，修改删除")]
         public Migration Migration { get; set; } = Migration.On;
+
+        /// <summary></summary>
+        [Description("表名称、字段名大小写格式。Default 根据模型生成;Upper 全大写;Lower 全小写")]
+        public NameFormats NameFormat { get; set; } = NameFormats.Default;
         #endregion
 
         #region 方法
-        /// <summary>加载后检查默认值</summary>
-        protected override void OnLoaded()
-        {
-            if (SQLiteDbPath.IsNullOrEmpty()) SQLiteDbPath = Runtime.IsWeb ? "..\\Data" : ".";
-            if (BackupPath.IsNullOrEmpty()) BackupPath = Runtime.IsWeb ? "..\\Backup" : "Backup";
+        ///// <summary>加载后检查默认值</summary>
+        //protected override void OnLoaded()
+        //{
+        //    if (SQLiteDbPath.IsNullOrEmpty()) SQLiteDbPath = Runtime.IsWeb ? "..\\Data" : "Data";
+        //    if (BackupPath.IsNullOrEmpty()) BackupPath = Runtime.IsWeb ? "..\\Backup" : "Backup";
 
-            base.OnLoaded();
-        }
+        //    base.OnLoaded();
+        //}
         #endregion
     }
 }

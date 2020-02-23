@@ -33,7 +33,7 @@ namespace XCode
             // 1，可以初始化该实体类型的操作工厂
             // 2，CreateOperate将会实例化一个TEntity对象，从而引发TEntity的静态构造函数，
             // 避免实际应用中，直接调用Entity的静态方法时，没有引发TEntity的静态构造函数。
-            var entity = new TEntity();
+            new TEntity();
         }
 
         /// <summary>创建实体。</summary>
@@ -200,7 +200,7 @@ namespace XCode
 
             if (enableValid)
             {
-                var rt = false;
+                Boolean rt;
                 if (isnew != null)
                 {
                     Valid(isnew.Value);
@@ -582,7 +582,7 @@ namespace XCode
             // 判断实体
             if (entity == null)
             {
-                String msg = null;
+                String msg;
                 if (Helper.IsNullKey(key, field.Type))
                     msg = String.Format("参数错误！无法取得编号为{0}的{1}！可能未设置自增主键！", key, Meta.Table.Description);
                 else
@@ -689,12 +689,13 @@ namespace XCode
 
             // 如下优化，避免了每次都调用Meta.Count而导致形成一次查询，虽然这次查询时间损耗不大
             // 但是绝大多数查询，都不需要进行类似的海量数据优化，显然，这个startRowIndex将会挡住99%以上的浪费
-            Int64 count = 0;
+            Int64 count;
             if (startRowIndex > 500000 && (count = session.LongCount) > 1000000)
             {
-                // 计算本次查询的结果行数
-                var wh = where?.GetString(null);
-                if (!wh.IsNullOrEmpty()) count = FindCount(where, order, selects, startRowIndex, maximumRows);
+                //// 计算本次查询的结果行数
+                //var wh = where?.GetString(null);
+                // 数据量巨大，每次都查总记录数很不划算，还不如用一个不太准的数据
+                //if (!wh.IsNullOrEmpty()) count = FindCount(where, order, selects, startRowIndex, maximumRows);
                 // 游标在中间偏后
                 if (startRowIndex * 2 > count)
                 {
@@ -792,11 +793,20 @@ namespace XCode
         {
             if (page == null) return FindAll(where, null, selects, 0, 0);
 
+            // 页面参数携带进来的扩展查询
+            if (page.State is Expression exp)
+                where &= exp;
+            else if (page.State is WhereBuilder builder)
+            {
+                if (builder.Factory == null) builder.Factory = Meta.Factory;
+                where &= builder.GetExpression();
+            }
+
             // 先查询满足条件的记录数，如果没有数据，则直接返回空集合，不再查询数据
             if (page.RetrieveTotalCount)
             {
                 var session = Meta.Session;
-                var rows = 0L;
+                Int64 rows;
 
                 // 如果总记录数超过10万，为了提高性能，返回快速查找且带有缓存的总记录数
                 if ((where == null || where.IsEmpty) && session.LongCount > 100_000)
@@ -822,7 +832,7 @@ namespace XCode
             }
 
             // 采用起始行还是分页
-            IList<TEntity> list = null;
+            IList<TEntity> list;
             if (page.StartRow >= 0)
                 list = FindAll(where, orderby, selects, page.StartRow, page.PageSize);
             else
@@ -831,7 +841,7 @@ namespace XCode
             if (list == null || list.Count == 0) return list;
 
             // 统计数据。100万以上数据要求带where才支持统计
-            if (page.RetrieveState && page.State == null &&
+            if (page.RetrieveState &&
                 (page.RetrieveTotalCount && page.TotalCount < 10_000_000
                 || Meta.Session.LongCount < 10_000_000 || where != null)
                 )
@@ -985,7 +995,7 @@ namespace XCode
         /// <param name="startRowIndex">开始行，0表示第一行</param>
         /// <param name="maximumRows">最大返回行数，0表示所有行</param>
         /// <returns>实体集</returns>
-        [Obsolete("=>Search(DateTime start, DateTime end, String key, PageParameter param)")]
+        [Obsolete("=>Search(DateTime start, DateTime end, String key, PageParameter page)")]
         public static IList<TEntity> Search(String key, String order, Int64 startRowIndex, Int64 maximumRows) => FindAll(SearchWhereByKeys(key, null), order, null, startRowIndex, maximumRows);
 
         /// <summary>查询满足条件的记录总数，分页和排序无效，带参数是因为ObjectDataSource要求它跟Search统一</summary>
@@ -994,14 +1004,14 @@ namespace XCode
         /// <param name="startRowIndex">开始行，0表示第一行</param>
         /// <param name="maximumRows">最大返回行数，0表示所有行</param>
         /// <returns>记录数</returns>
-        [Obsolete("=>Search(DateTime start, DateTime end, String key, PageParameter param)")]
+        [Obsolete("=>Search(DateTime start, DateTime end, String key, PageParameter page)")]
         public static Int32 SearchCount(String key, String order, Int64 startRowIndex, Int64 maximumRows) => (Int32)FindCount(SearchWhereByKeys(key, null), null, null, 0, 0);
 
         /// <summary>同时查询满足条件的记录集和记录总数。没有数据时返回空集合而不是null</summary>
         /// <param name="key"></param>
         /// <param name="page">分页排序参数，同时返回满足条件的总记录数</param>
         /// <returns></returns>
-        //[Obsolete("=>Search(DateTime start, DateTime end, String key, PageParameter param)")]
+        //[Obsolete("=>Search(DateTime start, DateTime end, String key, PageParameter page)")]
         public static IList<TEntity> Search(String key, PageParameter page) => FindAll(SearchWhereByKeys(key), page);
 
         /// <summary>同时查询满足条件的记录集和记录总数。没有数据时返回空集合而不是null</summary>
@@ -1329,12 +1339,7 @@ namespace XCode
         /// <param name="extend">是否序列化扩展属性</param>
         protected virtual Boolean OnRead(Stream stream, Object context, Boolean extend)
         {
-            var bn = context as Binary;
-            if (bn == null) bn = new Binary
-            {
-                Stream = stream,
-                EncodeInt = true
-            };
+            if (!(context is Binary bn)) bn = new Binary { Stream = stream, EncodeInt = true };
 
             var fs = extend ? Meta.AllFields : Meta.Fields;
             foreach (var fi in fs)
@@ -1352,12 +1357,7 @@ namespace XCode
         /// <param name="extend">是否序列化扩展属性</param>
         protected virtual Boolean OnWrite(Stream stream, Object context, Boolean extend)
         {
-            var bn = context as Binary;
-            if (bn == null) bn = new Binary
-            {
-                Stream = stream,
-                EncodeInt = true
-            };
+            if (!(context is Binary bn)) bn = new Binary { Stream = stream, EncodeInt = true };
 
             var fs = extend ? Meta.AllFields : Meta.Fields;
             foreach (var fi in fs)

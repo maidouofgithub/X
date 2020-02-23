@@ -91,6 +91,14 @@ namespace XCode.Membership
         [BindColumn("Visible", "可见", "")]
         public Boolean Visible { get { return _Visible; } set { if (OnPropertyChanging(__.Visible, value)) { _Visible = value; OnPropertyChanged(__.Visible); } } }
 
+        private Int32 _ManagerID;
+        /// <summary>管理者</summary>
+        [DisplayName("管理者")]
+        [Description("管理者")]
+        [DataObjectField(false, false, false, 0)]
+        [BindColumn("ManagerID", "管理者", "")]
+        public Int32 ManagerID { get { return _ManagerID; } set { if (OnPropertyChanging(__.ManagerID, value)) { _ManagerID = value; OnPropertyChanged(__.ManagerID); } } }
+
         private Int32 _Ex1;
         /// <summary>扩展1</summary>
         [DisplayName("扩展1")]
@@ -140,11 +148,11 @@ namespace XCode.Membership
         public String Ex6 { get { return _Ex6; } set { if (OnPropertyChanging(__.Ex6, value)) { _Ex6 = value; OnPropertyChanged(__.Ex6); } } }
 
         private String _CreateUser;
-        /// <summary>创建用户</summary>
-        [DisplayName("创建用户")]
-        [Description("创建用户")]
+        /// <summary>创建者</summary>
+        [DisplayName("创建者")]
+        [Description("创建者")]
         [DataObjectField(false, false, true, 50)]
-        [BindColumn("CreateUser", "创建用户", "")]
+        [BindColumn("CreateUser", "创建者", "")]
         public String CreateUser { get { return _CreateUser; } set { if (OnPropertyChanging(__.CreateUser, value)) { _CreateUser = value; OnPropertyChanged(__.CreateUser); } } }
 
         private Int32 _CreateUserID;
@@ -172,11 +180,11 @@ namespace XCode.Membership
         public DateTime CreateTime { get { return _CreateTime; } set { if (OnPropertyChanging(__.CreateTime, value)) { _CreateTime = value; OnPropertyChanged(__.CreateTime); } } }
 
         private String _UpdateUser;
-        /// <summary>更新用户</summary>
-        [DisplayName("更新用户")]
-        [Description("更新用户")]
+        /// <summary>更新者</summary>
+        [DisplayName("更新者")]
+        [Description("更新者")]
         [DataObjectField(false, false, true, 50)]
-        [BindColumn("UpdateUser", "更新用户", "")]
+        [BindColumn("UpdateUser", "更新者", "")]
         public String UpdateUser { get { return _UpdateUser; } set { if (OnPropertyChanging(__.UpdateUser, value)) { _UpdateUser = value; OnPropertyChanged(__.UpdateUser); } } }
 
         private Int32 _UpdateUserID;
@@ -231,6 +239,7 @@ namespace XCode.Membership
                     case __.Sort : return _Sort;
                     case __.Enable : return _Enable;
                     case __.Visible : return _Visible;
+                    case __.ManagerID : return _ManagerID;
                     case __.Ex1 : return _Ex1;
                     case __.Ex2 : return _Ex2;
                     case __.Ex3 : return _Ex3;
@@ -262,6 +271,7 @@ namespace XCode.Membership
                     case __.Sort : _Sort = value.ToInt(); break;
                     case __.Enable : _Enable = value.ToBoolean(); break;
                     case __.Visible : _Visible = value.ToBoolean(); break;
+                    case __.ManagerID : _ManagerID = value.ToInt(); break;
                     case __.Ex1 : _Ex1 = value.ToInt(); break;
                     case __.Ex2 : _Ex2 = value.ToInt(); break;
                     case __.Ex3 : _Ex3 = value.ToDouble(); break;
@@ -314,6 +324,9 @@ namespace XCode.Membership
             /// <summary>可见</summary>
             public static readonly Field Visible = FindByName(__.Visible);
 
+            /// <summary>管理者</summary>
+            public static readonly Field ManagerID = FindByName(__.ManagerID);
+
             /// <summary>扩展1</summary>
             public static readonly Field Ex1 = FindByName(__.Ex1);
 
@@ -332,7 +345,7 @@ namespace XCode.Membership
             /// <summary>扩展6</summary>
             public static readonly Field Ex6 = FindByName(__.Ex6);
 
-            /// <summary>创建用户</summary>
+            /// <summary>创建者</summary>
             public static readonly Field CreateUser = FindByName(__.CreateUser);
 
             /// <summary>创建用户</summary>
@@ -344,7 +357,7 @@ namespace XCode.Membership
             /// <summary>创建时间</summary>
             public static readonly Field CreateTime = FindByName(__.CreateTime);
 
-            /// <summary>更新用户</summary>
+            /// <summary>更新者</summary>
             public static readonly Field UpdateUser = FindByName(__.UpdateUser);
 
             /// <summary>更新用户</summary>
@@ -392,6 +405,9 @@ namespace XCode.Membership
             /// <summary>可见</summary>
             public const String Visible = "Visible";
 
+            /// <summary>管理者</summary>
+            public const String ManagerID = "ManagerID";
+
             /// <summary>扩展1</summary>
             public const String Ex1 = "Ex1";
 
@@ -410,7 +426,7 @@ namespace XCode.Membership
             /// <summary>扩展6</summary>
             public const String Ex6 = "Ex6";
 
-            /// <summary>创建用户</summary>
+            /// <summary>创建者</summary>
             public const String CreateUser = "CreateUser";
 
             /// <summary>创建用户</summary>
@@ -422,7 +438,7 @@ namespace XCode.Membership
             /// <summary>创建时间</summary>
             public const String CreateTime = "CreateTime";
 
-            /// <summary>更新用户</summary>
+            /// <summary>更新者</summary>
             public const String UpdateUser = "UpdateUser";
 
             /// <summary>更新用户</summary>
@@ -471,6 +487,9 @@ namespace XCode.Membership
         /// <summary>可见</summary>
         Boolean Visible { get; set; }
 
+        /// <summary>管理者</summary>
+        Int32 ManagerID { get; set; }
+
         /// <summary>扩展1</summary>
         Int32 Ex1 { get; set; }
 
@@ -489,7 +508,7 @@ namespace XCode.Membership
         /// <summary>扩展6</summary>
         String Ex6 { get; set; }
 
-        /// <summary>创建用户</summary>
+        /// <summary>创建者</summary>
         String CreateUser { get; set; }
 
         /// <summary>创建用户</summary>
@@ -501,7 +520,7 @@ namespace XCode.Membership
         /// <summary>创建时间</summary>
         DateTime CreateTime { get; set; }
 
-        /// <summary>更新用户</summary>
+        /// <summary>更新者</summary>
         String UpdateUser { get; set; }
 
         /// <summary>更新用户</summary>

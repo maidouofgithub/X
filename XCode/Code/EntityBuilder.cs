@@ -45,11 +45,13 @@ namespace XCode.Code
         /// <param name="output">输出目录</param>
         /// <param name="nameSpace">命名空间</param>
         /// <param name="connName">连接名</param>
-        public static Int32 Build(String xmlFile = null, String output = null, String nameSpace = null, String connName = null)
+        /// <param name="chineseFileName">中文文件名</param>
+        /// <param name="ignoreNameCase">忽略表名、字段名大小写（true 当前表名与类名称相同时，则自动省略该属性，反之 false）</param>
+        public static Int32 Build(String xmlFile = null, String output = null, String nameSpace = null, String connName = null, Boolean? chineseFileName = null, Boolean? ignoreNameCase = null)
         {
             if (xmlFile.IsNullOrEmpty())
             {
-                var di = ".".AsDirectory();
+                var di = ".".GetBasePath().AsDirectory();
                 XTrace.WriteLine("未指定模型文件，准备从目录中查找第一个xml文件 {0}", di.FullName);
                 // 选当前目录第一个
                 xmlFile = di.GetFiles("*.xml", SearchOption.TopDirectoryOnly).FirstOrDefault()?.FullName;
@@ -57,12 +59,19 @@ namespace XCode.Code
 
             if (xmlFile.IsNullOrEmpty()) throw new Exception("找不到任何模型文件！");
 
-            xmlFile = xmlFile.GetFullPath();
+            xmlFile = xmlFile.GetBasePath();
             if (!File.Exists(xmlFile)) throw new FileNotFoundException("指定模型文件不存在！", xmlFile);
 
             // 导入模型
             var xml = File.ReadAllText(xmlFile);
-            var atts = new NullableDictionary<String, String>(StringComparer.OrdinalIgnoreCase);
+            var atts = new NullableDictionary<String, String>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["xmlns"] = "http://www.newlifex.com/Model2020.xsd",
+                ["xmlns:xs"] = "http://www.w3.org/2001/XMLSchema-instance",
+                ["xs:schemaLocation"] = "http://www.newlifex.com http://www.newlifex.com/Model2020.xsd"
+            };
+
+            // 导入模型
             var tables = ModelHelper.FromXml(xml, DAL.CreateTable, atts);
             if (tables.Count == 0) return 0;
 
@@ -94,15 +103,43 @@ namespace XCode.Code
             else
                 baseClass = atts["BaseClass"];
 
+            // 中文文件名
+            if (chineseFileName != null)
+            {
+                atts["ChineseFileName"] = chineseFileName.Value ? "True" : "False";
+            }
+            else
+            {
+                chineseFileName = atts["ChineseFileName"].ToBoolean(true);
+            }
+
+            // 忽略表名/字段名称大小写
+            if (ignoreNameCase != null)
+            {
+                atts["IgnoreNameCase"] = ignoreNameCase.Value ? "True" : "False";
+            }
+            else
+            {
+                var str = atts["IgnoreNameCase"];
+                if (str.IsNullOrEmpty()) str = atts["NameIgnoreCase"];
+                ignoreNameCase = str.ToBoolean();
+            }
+
             XTrace.WriteLine("代码生成源：{0}", xmlFile);
 
-            var rs = BuildTables(tables, output, nameSpace, connName, baseClass);
+            var rs = BuildTables(tables, output, nameSpace, connName, baseClass, chineseFileName.Value, ignoreNameCase.Value);
 
             // 确保输出空特性
             if (atts["Output"].IsNullOrEmpty()) atts["Output"] = "";
             if (atts["NameSpace"].IsNullOrEmpty()) atts["NameSpace"] = "";
             if (atts["ConnName"].IsNullOrEmpty()) atts["ConnName"] = "";
             if (atts["BaseClass"].IsNullOrEmpty()) atts["BaseClass"] = "Entity";
+            if (atts["IgnoreNameCase"].IsNullOrEmpty()) atts["IgnoreNameCase"] = true + "";
+            atts.Remove("NameIgnoreCase");
+
+            // 更新xsd
+            atts["xmlns"] = atts["xmlns"].Replace("ModelSchema", "Model2020");
+            atts["xs:schemaLocation"] = atts["xs:schemaLocation"].Replace("ModelSchema", "Model2020");
 
             // 保存模型文件
             var xml2 = ModelHelper.ToXml(tables, atts);
@@ -117,9 +154,13 @@ namespace XCode.Code
         /// <param name="nameSpace">命名空间</param>
         /// <param name="connName">连接名</param>
         /// <param name="baseClass">基类</param>
-        public static Int32 BuildTables(IList<IDataTable> tables, String output = null, String nameSpace = null, String connName = null, String baseClass = null)
+        /// <param name="chineseFileName">是否中文名称</param>
+        /// <param name="ignoreNameCase">忽略表名、字段名大小写（true 当前表名与类名称相同时，则自动省略该属性，反之 false）</param>
+        public static Int32 BuildTables(IList<IDataTable> tables, String output = null, String nameSpace = null, String connName = null, String baseClass = null, Boolean chineseFileName = true, Boolean ignoreNameCase = true)
         {
             if (tables == null || tables.Count == 0) return 0;
+
+            output = output.GetBasePath();
 
             // 连接名
             if (connName.IsNullOrEmpty() && !nameSpace.IsNullOrEmpty() && nameSpace.Contains(".")) connName = nameSpace.Substring(nameSpace.LastIndexOf(".") + 1);
@@ -151,19 +192,23 @@ namespace XCode.Code
                 if (str.IsNullOrEmpty()) str = baseClass;
                 builder.BaseClass = str;
 
+                // 名称忽略大小写(默认忽略)
+                if (item.IgnoreNameCase.IsNullOrEmpty() && !ignoreNameCase) item.IgnoreNameCase = ignoreNameCase + "";
+                item.Properties.Remove("NameIgnoreCase");
+
                 if (Debug) builder.Log = XTrace.Log;
 
                 builder.Execute();
 
                 // 输出目录
                 str = item.Properties["Output"];
-                if (str.IsNullOrEmpty()) str = output;
+                str = str.IsNullOrEmpty() ? output : str.GetBasePath();
                 builder.Output = str;
-                builder.Save(null, true);
+                builder.Save(null, true, chineseFileName);
 
                 builder.Business = true;
                 builder.Execute();
-                builder.Save(null, false);
+                builder.Save(null, false, chineseFileName);
 
                 count++;
             }
@@ -232,7 +277,8 @@ namespace XCode.Code
         /// <summary>保存</summary>
         /// <param name="ext"></param>
         /// <param name="overwrite"></param>
-        public override String Save(String ext = null, Boolean overwrite = true)
+        /// <param name="chineseFileName"></param>
+        public override String Save(String ext = null, Boolean overwrite = true, Boolean chineseFileName = true)
         {
             if (ext.IsNullOrEmpty() && Business)
             {
@@ -240,7 +286,7 @@ namespace XCode.Code
                 //overwrite = false;
             }
 
-            return base.Save(ext, overwrite);
+            return base.Save(ext, overwrite, chineseFileName);
         }
 
         /// <summary>生成尾部</summary>
@@ -276,6 +322,7 @@ namespace XCode.Code
                 us.Add("System.Web");
                 //us.Add("System.Web.Script.Serialization");
                 us.Add("System.Xml.Serialization");
+                us.Add("System.Runtime.Serialization");
 
                 us.Add("NewLife");
                 us.Add("NewLife.Data");
@@ -699,7 +746,7 @@ namespace XCode.Code
 
             WriteLine("///// <summary>首次连接数据库时初始化数据，仅用于实体类重载，用户不应该调用该方法</summary>");
             WriteLine("//[EditorBrowsable(EditorBrowsableState.Never)]");
-            WriteLine("//protected override void InitData()");
+            WriteLine("//protected internal override void InitData()");
             WriteLine("//{");
             WriteLine("//    // InitData一般用于当数据表没有数据时添加一些默认数据，该实体类的任何第一次数据库操作都会触发该方法，默认异步调用");
             WriteLine("//    if (Meta.Session.Count > 0) return;");
@@ -784,7 +831,7 @@ namespace XCode.Code
                     var pk = dt.PrimaryKeys[0];
 
                     WriteLine("/// <summary>{0}</summary>", dis);
-                    WriteLine("[XmlIgnore]");
+                    WriteLine("[XmlIgnore, IgnoreDataMember]");
                     WriteLine("//[ScriptIgnore]");
                     WriteLine("public {1} {1} {{ get {{ return Extends.Get({0}, k => {1}.FindBy{3}({2})); }} }}", NameOf(pname), dt.Name, dc.Name, pk.Name);
 
@@ -795,7 +842,7 @@ namespace XCode.Code
                     {
                         WriteLine();
                         WriteLine("/// <summary>{0}</summary>", dis);
-                        WriteLine("[XmlIgnore]");
+                        WriteLine("[XmlIgnore, IgnoreDataMember]");
                         WriteLine("//[ScriptIgnore]");
                         if (!dis.IsNullOrEmpty()) WriteLine("[DisplayName(\"{0}\")]", dis);
                         WriteLine("[Map(__.{0}, typeof({1}), \"{2}\")]", dc.Name, dt.Name, pk.Name);

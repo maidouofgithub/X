@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Data;
 using System.IO;
 using System.Linq;
+using System.Xml.Serialization;
 using NewLife.Reflection;
 using NewLife.Serialization;
 
@@ -17,6 +18,7 @@ namespace NewLife.Data
         public String[] Columns { get; set; }
 
         /// <summary>数据列类型</summary>
+        [XmlIgnore]
         public Type[] Types { get; set; }
 
         /// <summary>数据行</summary>
@@ -182,8 +184,9 @@ namespace NewLife.Data
 
         /// <summary>从文件加载</summary>
         /// <param name="file"></param>
+        /// <param name="compressed">是否压缩</param>
         /// <returns></returns>
-        public Int64 LoadFile(String file) => file.AsFile().OpenRead(s => Read(s));
+        public Int64 LoadFile(String file, Boolean compressed = false) => file.AsFile().OpenRead(compressed, s => Read(s));
         #endregion
 
         #region 二进制写入
@@ -271,8 +274,41 @@ namespace NewLife.Data
 
         /// <summary>保存到文件</summary>
         /// <param name="file"></param>
+        /// <param name="compressed">是否压缩</param>
         /// <returns></returns>
-        public Int64 SaveFile(String file) => file.AsFile().OpenWrite(s => Write(s));
+        public Int64 SaveFile(String file, Boolean compressed = false) => file.AsFile().OpenWrite(compressed, s => Write(s));
+        #endregion
+
+        #region Json序列化
+        /// <summary>转Json字符串</summary>
+        /// <param name="indented">是否缩进。默认false</param>
+        /// <param name="nullValue">是否写空值。默认true</param>
+        /// <param name="camelCase">是否驼峰命名。默认false</param>
+        /// <returns></returns>
+        public String ToJson(Boolean indented = false, Boolean nullValue = true, Boolean camelCase = false)
+        {
+            // 先转为名值对象的数组，再进行序列化
+            var list = ToDictionary();
+            return list.ToJson(indented, nullValue, camelCase);
+        }
+
+        /// <summary>转为字典数组形式</summary>
+        /// <returns></returns>
+        public IList<IDictionary<String, Object>> ToDictionary()
+        {
+            var list = new List<IDictionary<String, Object>>();
+            foreach (var row in Rows)
+            {
+                var dic = new Dictionary<String, Object>();
+                for (var i = 0; i < Columns.Length; i++)
+                {
+                    dic[Columns[i]] = row[i];
+                }
+                list.Add(dic);
+            }
+
+            return list;
+        }
         #endregion
 
         #region 获取

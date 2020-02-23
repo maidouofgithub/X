@@ -44,9 +44,9 @@ namespace XCode.DataAccessLayer
 
         /// <summary>销毁资源时，回滚未提交事务，并关闭数据库连接</summary>
         /// <param name="disposing"></param>
-        protected override void OnDispose(Boolean disposing)
+        protected override void Dispose(Boolean disposing)
         {
-            base.OnDispose(disposing);
+            base.Dispose(disposing);
 
             //_store.Values.TryDispose();
             _store.TryDispose();
@@ -181,10 +181,11 @@ namespace XCode.DataAccessLayer
             if (builder.TryGetAndRemove(nameof(TablePrefix), out value) && !value.IsNullOrEmpty()) TablePrefix = value;
             if (builder.TryGetAndRemove(nameof(Readonly), out value) && !value.IsNullOrEmpty()) Readonly = value.ToBoolean();
             if (builder.TryGetAndRemove(nameof(DataCache), out value) && !value.IsNullOrEmpty()) DataCache = value.ToInt();
+            // 反向工程生成sql中表名和字段名称大小写
+            if (builder.TryGetAndRemove(nameof(NameFormat), out value) && !value.IsNullOrEmpty()) NameFormat = (NameFormats)Enum.Parse(typeof(NameFormats), value, true);
 
             // 连接字符串去掉provider，可能有些数据库不支持这个属性
             if (builder.TryGetAndRemove("provider", out value) && !value.IsNullOrEmpty()) { }
-
 
             // 数据库名称
             var db = builder["Database"];
@@ -231,6 +232,9 @@ namespace XCode.DataAccessLayer
 
         /// <summary>表前缀。所有在该连接上的表名都自动增加该前缀</summary>
         public String TablePrefix { get; set; }
+
+        /// <summary>反向工程表名、字段名大小写设置</summary>
+        public NameFormats NameFormat { get; set; } = Setting.Current.NameFormat;
         #endregion
 
         #region 方法
@@ -319,9 +323,10 @@ namespace XCode.DataAccessLayer
         /// <summary>获取提供者工厂</summary>
         /// <param name="assemblyFile"></param>
         /// <param name="className"></param>
+        /// <param name="strict"></param>
         /// <param name="ignoreError"></param>
         /// <returns></returns>
-        public static DbProviderFactory GetProviderFactory(String assemblyFile, String className, Boolean ignoreError = false)
+        public static DbProviderFactory GetProviderFactory(String assemblyFile, String className, Boolean strict = false, Boolean ignoreError = false)
         {
             try
             {
@@ -331,28 +336,27 @@ namespace XCode.DataAccessLayer
                 {
                     var linkName = name;
 #if __CORE__
-                    if (Runtime.Linux)
-                    {
-                        linkName += Environment.Is64BitProcess ? ".linux-x64" : ".linux-x86";
-                        links.Add(linkName);
-                        links.Add(name + ".linux");
-                    }
-                    else
-                    {
-                        linkName += Environment.Is64BitProcess ? ".win-x64" : ".win-x86";
-                        links.Add(linkName);
-                        links.Add(name + ".win");
-                    }
+                    var arch = (RuntimeInformation.OSArchitecture + "").ToLower();
+                    // 可能是在x64架构上跑x86
+                    if (arch == "x64" && !Environment.Is64BitProcess) arch = "x86";
 
-                    linkName = name + ".st";
+                    var platform = "";
+                    if (Runtime.Linux)
+                        platform = "linux";
+                    else if (Runtime.OSX)
+                        platform = "osx";
+                    else
+                        platform = "win";
+
+                    links.Add($"{name}.{platform}-{arch}");
 #else
                     if (Environment.Is64BitProcess) linkName += "64";
                     var ver = Environment.Version;
                     if (ver.Major >= 4) linkName += "Fx" + ver.Major + ver.Minor;
-#endif
                     links.Add(linkName);
+#endif
                     // 有些数据库驱动不区分x86/x64，并且逐步以Fx4为主，所以来一个默认
-                    if (!links.Contains(name)) links.Add(name);
+                    if (!strict && !links.Contains(name)) links.Add(name);
                 }
 
                 var type = PluginHelper.LoadPlugin(className, null, assemblyFile, links.Join(","));
@@ -403,7 +407,7 @@ namespace XCode.DataAccessLayer
             }
         }
 
-        [DllImport("kernel32.dll")]
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
         static extern Int32 SetDllDirectory(String pathName);
         #endregion
 
@@ -888,27 +892,15 @@ namespace XCode.DataAccessLayer
 
         protected static String ResolveFile(String file)
         {
-            if (String.IsNullOrEmpty(file)) return file;
+            if (file.IsNullOrEmpty()) return file;
 
-            file = file.Replace("|DataDirectory|", @"~\App_Data");
+            var cfg = NewLife.Setting.Current;
+            file = file.Replace("|DataDirectory|", cfg.DataPath);
+            file = file.Replace(@"~\App_Data", cfg.DataPath);
+            file = file.TrimStart("~");
 
-            var sep = Path.DirectorySeparatorChar + "";
-            var sep2 = sep == "/" ? "\\" : "/";
-            var bpath = AppDomain.CurrentDomain.BaseDirectory.EnsureEnd(sep);
-            if (file.StartsWith("~" + sep) || file.StartsWith("~" + sep2))
-            {
-                file = file.Replace(sep2, sep).Replace("~" + sep, bpath);
-            }
-            else if (file.StartsWith("." + sep) || file.StartsWith("." + sep2))
-            {
-                file = file.Replace(sep2, sep).Replace("." + sep, bpath);
-            }
-            else if (!Path.IsPathRooted(file))
-            {
-                file = bpath.CombinePath(file.Replace(sep2, sep));
-            }
             // 过滤掉不必要的符号
-            file = new FileInfo(file).FullName;
+            file = new FileInfo(file.GetBasePath()).FullName;
 
             return file;
         }

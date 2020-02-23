@@ -531,21 +531,16 @@ namespace NewLife.Reflection
 
                     var basedir = AppDomain.CurrentDomain.BaseDirectory;
                     set.Add(basedir);
-                    if (Directory.Exists("bin".GetFullPath())) set.Add("bin".GetFullPath());
-                    var plugin = Setting.Current.GetPluginPath();
+
+                    var bin = "bin".GetFullPath();
+                    if (Directory.Exists(bin)) set.Add(bin);
+
+                    var cfg = Setting.Current;
+                    var plugin = cfg.PluginPath.GetFullPath();
                     if (!set.Contains(plugin)) set.Add(plugin);
 
-                    //// 增加所有程序集所在目录为搜索目录，便于查找程序集
-                    //foreach (var asm in GetAssemblies())
-                    //{
-                    //    // GAC程序集和系统程序集跳过
-                    //    if (asm.Asm.GlobalAssemblyCache) continue;
-                    //    if (asm.IsSystemAssembly) continue;
-                    //    if (String.IsNullOrEmpty(asm.Location)) continue;
-
-                    //    var dir = Path.GetDirectoryName(asm.Location).EnsureEnd("\\");
-                    //    if (!set.Contains(dir)) set.Add(dir);
-                    //}
+                    plugin = cfg.PluginPath.GetBasePath();
+                    if (!set.Contains(plugin)) set.Add(plugin);
 
                     _AssemblyPaths = set;
                 }
@@ -608,24 +603,8 @@ namespace NewLife.Reflection
                 if (loadeds.Any(e => e.Location.EqualIgnoreCase(item)) ||
                     loadeds2.Any(e => e.Location.EqualIgnoreCase(item))) continue;
 
-#if !__CORE__
                 var asm = ReflectionOnlyLoadFrom(item, ver);
                 if (asm == null) continue;
-#else
-
-                var asm = (Assembly)null;
-                try
-                {
-                    asm = Assembly.LoadFrom(item);
-                }
-                catch (BadImageFormatException)
-                {
-                    _BakImages.Add(item);
-                    //XTrace.WriteLine(ex.ToString());
-                }
-
-                if (asm == null) continue;
-#endif
 
                 // 不搜索系统程序集，优化性能
                 if (CheckSystem(asm)) continue;
@@ -643,7 +622,6 @@ namespace NewLife.Reflection
             }
         }
 
-#if !__CORE__
         /// <summary>只反射加载指定路径的所有程序集</summary>
         /// <param name="file"></param>
         /// <param name="ver"></param>
@@ -655,11 +633,18 @@ namespace NewLife.Reflection
 
             try
             {
+#if !__CORE__
                 return Assembly.ReflectionOnlyLoadFrom(file);
-            }
-            catch { return null; }
-        }
+#else
+                return Assembly.LoadFrom(file);
 #endif
+            }
+            catch
+            {
+                _BakImages.Add(file);
+                return null;
+            }
+        }
 
         /// <summary>获取当前应用程序的所有程序集，不包括系统程序集，仅限本目录</summary>
         /// <returns></returns>
@@ -673,11 +658,20 @@ namespace NewLife.Reflection
                 // 加载程序集列表很容易抛出异常，全部屏蔽
                 try
                 {
-                    if (String.IsNullOrEmpty(asmx.FileVersion)) continue;
+                    if (asmx.FileVersion.IsNullOrEmpty()) continue;
+
                     var file = asmx.Asm.CodeBase;
-                    if (String.IsNullOrEmpty(file)) continue;
-                    file = file.TrimStart("file:///");
-                    file = file.Replace("/", "\\");
+                    if (file.IsNullOrEmpty()) file = asmx.Asm.Location;
+                    if (file.IsNullOrEmpty()) continue;
+
+                    if (file.StartsWith("file:///"))
+                    {
+                        file = file.TrimStart("file:///");
+                        if (Path.DirectorySeparatorChar == '\\')
+                            file = file.Replace('/', '\\');
+                        else
+                            file = file.Replace('\\', '/').EnsureStart("/");
+                    }
                     if (!file.StartsWithIgnoreCase(cur)) continue;
 
                     if (!hs.Contains(file))

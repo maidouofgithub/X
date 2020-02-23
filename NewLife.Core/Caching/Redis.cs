@@ -12,19 +12,23 @@ using NewLife.Net;
 
 namespace NewLife.Caching
 {
-    /// <summary>Redis缓存</summary>
+    /// <summary>Redi客户端</summary>
+    /// <remarks>
+    /// 强烈建议直接new Redis()，并保持唯一对象
+    /// </remarks>
     public class Redis : Cache
     {
         #region 静态
         static Redis()
         {
-            ObjectContainer.Current.AutoRegister<Redis, Redis>();
+            //ObjectContainer.Current.AutoRegister<Redis, Redis>();
         }
 
         /// <summary>创建指定服务器的实例</summary>
         /// <param name="server">服务器地址。支持前面加上密码，@分隔</param>
         /// <param name="db">使用的数据库</param>
         /// <returns></returns>
+        [Obsolete("=>new FullRedis/Redis(\"127.0.0.1\", \"abcd1234\", 3)")]
         public static Redis Create(String server, Int32 db)
         {
             if (server.IsNullOrEmpty() || server == ".") server = "127.0.0.1";
@@ -63,6 +67,7 @@ namespace NewLife.Caching
         /// <param name="password">密码</param>
         /// <param name="db">使用的数据库</param>
         /// <returns></returns>
+        [Obsolete("=>new FullRedis/Redis(\"127.0.0.1\", \"abcd1234\", 3)")]
         public static Redis Create(String server, String password, Int32 db)
         {
             if (server.IsNullOrEmpty() || server == ".") server = "127.0.0.1";
@@ -107,7 +112,21 @@ namespace NewLife.Caching
         #endregion
 
         #region 构造
-        /// <summary>初始化</summary>
+        /// <summary>实例化</summary>
+        public Redis() { }
+
+        /// <summary>实例化Redis，指定服务器地址、密码、库</summary>
+        /// <param name="server"></param>
+        /// <param name="password"></param>
+        /// <param name="db"></param>
+        public Redis(String server, String password, Int32 db)
+        {
+            Server = server;
+            Password = password;
+            Db = db;
+        }
+
+        /// <summary>使用连接字符串初始化</summary>
         /// <param name="config"></param>
         public override void Init(String config)
         {
@@ -124,9 +143,9 @@ namespace NewLife.Caching
 
         /// <summary>销毁</summary>
         /// <param name="disposing"></param>
-        protected override void OnDispose(Boolean disposing)
+        protected override void Dispose(Boolean disposing)
         {
-            base.OnDispose(disposing);
+            base.Dispose(disposing);
 
             try
             {
@@ -143,26 +162,26 @@ namespace NewLife.Caching
         #endregion
 
         #region 子库
-        private ConcurrentDictionary<Int32, Redis> _sub = new ConcurrentDictionary<Int32, Redis>();
-        /// <summary>为同一服务器创建不同Db的子级库</summary>
-        /// <param name="db"></param>
-        /// <returns></returns>
-        public virtual Redis CreateSub(Int32 db)
-        {
-            if (Db != 0) throw new ArgumentOutOfRangeException(nameof(Db), "只有Db=0的库才能创建子级库连接");
-            if (db == 0) return this;
+        //private ConcurrentDictionary<Int32, Redis> _sub = new ConcurrentDictionary<Int32, Redis>();
+        ///// <summary>为同一服务器创建不同Db的子级库</summary>
+        ///// <param name="db"></param>
+        ///// <returns></returns>
+        //public virtual Redis CreateSub(Int32 db)
+        //{
+        //    if (Db != 0) throw new ArgumentOutOfRangeException(nameof(Db), "只有Db=0的库才能创建子级库连接");
+        //    if (db == 0) return this;
 
-            return _sub.GetOrAdd(db, k =>
-            {
-                var r = new Redis
-                {
-                    Server = Server,
-                    Db = db,
-                    Password = Password,
-                };
-                return r;
-            });
-        }
+        //    return _sub.GetOrAdd(db, k =>
+        //    {
+        //        var r = new Redis
+        //        {
+        //            Server = Server,
+        //            Db = db,
+        //            Password = Password,
+        //        };
+        //        return r;
+        //    });
+        //}
         #endregion
 
         #region 客户端池
@@ -193,15 +212,10 @@ namespace NewLife.Caching
             var uri = new NetUri(svr);
             if (uri.Port == 0) uri.Port = 6379;
 
-            var rc = new RedisClient
+            var rc = new RedisClient(this, uri)
             {
-                Host = this,
-                Server = uri,
-                //Password = rds.Password,
-                //Db = rds.Db,
+                Log = Log
             };
-
-            rc.Log = Log;
             //if (rds.Db > 0) rc.Select(rds.Db);
 
             return rc;
@@ -263,6 +277,9 @@ namespace NewLife.Caching
                 }
             }
 
+            // 读操作遇到未完成管道队列时，立马执行管道操作
+            if (!write) StopPipeline(true);
+
             // 统计性能
             var sw = Counter?.StartCount();
 
@@ -274,11 +291,7 @@ namespace NewLife.Caching
                 try
                 {
                     client.Reset();
-                    var rs = func(client);
-
-                    Counter?.StopCount(sw);
-
-                    return rs;
+                    return func(client);
                 }
                 catch (InvalidDataException)
                 {
@@ -287,6 +300,8 @@ namespace NewLife.Caching
                 finally
                 {
                     Pool.Put(client);
+
+                    Counter?.StopCount(sw);
                 }
             } while (true);
         }
@@ -309,12 +324,15 @@ namespace NewLife.Caching
         }
 
         /// <summary>结束管道模式</summary>
-        /// <param name="requireResult">要求结果。默认false</param>
-        public virtual Object[] StopPipeline(Boolean requireResult = false)
+        /// <param name="requireResult">要求结果。默认true</param>
+        public virtual Object[] StopPipeline(Boolean requireResult = true)
         {
             var rds = _client.Value;
             if (rds == null) return null;
             _client.Value = null;
+
+            // 统计性能
+            var sw = Counter?.StartCount();
 
             // 管道处理不需要重试
             try
@@ -328,6 +346,8 @@ namespace NewLife.Caching
 
                 rds.Reset();
                 Pool.Put(rds);
+
+                Counter?.StopCount(sw);
             }
         }
 
@@ -484,6 +504,30 @@ namespace NewLife.Caching
                 }
             }
         }
+
+        /// <summary>获取哈希</summary>
+        /// <typeparam name="T">元素类型</typeparam>
+        /// <param name="key">键</param>
+        /// <returns></returns>
+        public override IDictionary<String, T> GetDictionary<T>(String key) => throw new NotSupportedException("Redis未支持该功能，需要new FullRedis");
+
+        /// <summary>获取队列</summary>
+        /// <typeparam name="T">元素类型</typeparam>
+        /// <param name="key">键</param>
+        /// <returns></returns>
+        public override IProducerConsumer<T> GetQueue<T>(String key) => throw new NotSupportedException("Redis未支持该功能，需要new FullRedis");
+
+        /// <summary>获取栈</summary>
+        /// <typeparam name="T">元素类型</typeparam>
+        /// <param name="key">键</param>
+        /// <returns></returns>
+        public override IProducerConsumer<T> GetStack<T>(String key) => throw new NotSupportedException("Redis未支持该功能，需要new FullRedis");
+
+        /// <summary>获取Set</summary>
+        /// <typeparam name="T"></typeparam>
+        /// <param name="key"></param>
+        /// <returns></returns>
+        public override ICollection<T> GetSet<T>(String key) => throw new NotSupportedException("Redis未支持该功能，需要new FullRedis");
         #endregion
 
         #region 高级操作
@@ -582,13 +626,19 @@ namespace NewLife.Caching
         /// </remarks>
         /// <param name="rand">随机读写</param>
         /// <param name="batch">批量操作</param>
-        public override void Bench(Boolean rand = true, Int32 batch = 100)
+        public override Int64 Bench(Boolean rand = true, Int32 batch = 1000)
         {
             XTrace.WriteLine($"目标服务器：{Server}/{Db}");
 
-            if (AutoPipeline == 0) AutoPipeline = 100;
+            //if (AutoPipeline == 0) AutoPipeline = 1000;
+            // 顺序操作时，打开自动管道
+            if (!rand && batch > 0)
+            {
+                AutoPipeline = batch;
+                FullPipeline = true;
+            }
 
-            base.Bench(rand, batch);
+            return base.Bench(rand, batch);
         }
 
         /// <summary>使用指定线程测试指定次数</summary>
@@ -596,11 +646,30 @@ namespace NewLife.Caching
         /// <param name="threads">线程</param>
         /// <param name="rand">随机读写</param>
         /// <param name="batch">批量操作</param>
-        public override void BenchOne(Int64 times, Int32 threads, Boolean rand, Int32 batch)
+        public override Int64 BenchOne(Int64 times, Int32 threads, Boolean rand, Int32 batch)
         {
-            if (rand && batch > 10) times *= 10;
+            if (!rand)
+            {
+                if (batch > 10) times *= 10;
+            }
+            else
+            {
+                if (batch > 10) times *= 10;
+            }
 
-            base.BenchOne(times, threads, rand, batch);
+            return base.BenchOne(times, threads, rand, batch);
+        }
+
+        /// <summary>累加测试</summary>
+        /// <param name="key">键</param>
+        /// <param name="times">次数</param>
+        /// <param name="threads">线程</param>
+        /// <param name="rand">随机读写</param>
+        /// <param name="batch">批量操作</param>
+        protected override Int64 BenchInc(String key, Int64 times, Int32 threads, Boolean rand, Int32 batch)
+        {
+            if (rand && batch > 10) times /= 10;
+            return base.BenchInc(key, times, threads, rand, batch);
         }
         #endregion
 

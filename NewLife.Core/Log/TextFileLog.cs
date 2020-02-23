@@ -32,7 +32,7 @@ namespace NewLife.Log
             _Timer = new TimerX(s => CloseFile(), null, 5_000, 5_000) { Async = true };
         }
 
-        static ConcurrentDictionary<String, TextFileLog> cache = new ConcurrentDictionary<String, TextFileLog>(StringComparer.OrdinalIgnoreCase);
+        static readonly ConcurrentDictionary<String, TextFileLog> cache = new ConcurrentDictionary<String, TextFileLog>(StringComparer.OrdinalIgnoreCase);
         /// <summary>每个目录的日志实例应该只有一个，所以采用静态创建</summary>
         /// <param name="path">日志目录或日志文件路径</param>
         /// <param name="fileFormat"></param>
@@ -57,7 +57,11 @@ namespace NewLife.Log
         }
 
         /// <summary>销毁</summary>
-        public void Dispose()
+        public void Dispose() { Dispose(true); GC.SuppressFinalize(this); }
+
+        /// <summary>销毁</summary>
+        /// <param name="disposing"></param>
+        protected virtual void Dispose(Boolean disposing)
         {
             _Timer.TryDispose();
 
@@ -84,7 +88,7 @@ namespace NewLife.Log
             get
             {
                 if (String.IsNullOrEmpty(_LogPath) && !String.IsNullOrEmpty(LogFile))
-                    _LogPath = Path.GetDirectoryName(LogFile).GetFullPath().EnsureEnd(Path.DirectorySeparatorChar.ToString());
+                    _LogPath = Path.GetDirectoryName(LogFile).GetBasePath().EnsureEnd(Path.DirectorySeparatorChar.ToString());
                 return _LogPath;
             }
             set
@@ -92,7 +96,7 @@ namespace NewLife.Log
                 if (String.IsNullOrEmpty(value))
                     _LogPath = value;
                 else
-                    _LogPath = value.GetFullPath().EnsureEnd(Path.DirectorySeparatorChar.ToString());
+                    _LogPath = value.GetBasePath().EnsureEnd(Path.DirectorySeparatorChar.ToString());
             }
         }
 
@@ -177,6 +181,7 @@ namespace NewLife.Log
         #region 异步写日志
         private readonly TimerX _Timer;
         private readonly ConcurrentQueue<String> _Logs = new ConcurrentQueue<String>();
+        private volatile Int32 _logCount;
         private Int32 _writing;
         private DateTime _NextClose;
 
@@ -198,6 +203,8 @@ namespace NewLife.Log
 
             while (_Logs.TryDequeue(out var str))
             {
+                Interlocked.Decrement(ref _logCount);
+
                 // 写日志
                 writer.WriteLine(str);
             }
@@ -240,6 +247,9 @@ namespace NewLife.Log
         /// <param name="args"></param>
         protected override void OnWrite(LogLevel level, String format, params Object[] args)
         {
+            // 据@夏玉龙反馈，如果不给Log目录写入权限，日志队列积压将会导致内存暴增
+            if (_logCount > 100) return;
+
             var e = WriteLogEventArgs.Current.Set(level);
             // 特殊处理异常对象
             if (args != null && args.Length == 1 && args[0] is Exception ex && (format.IsNullOrEmpty() || format == "{0}"))
@@ -249,6 +259,7 @@ namespace NewLife.Log
 
             // 推入队列
             _Logs.Enqueue(e.ToString());
+            Interlocked.Increment(ref _logCount);
 
             // 异步写日志
             if (Interlocked.CompareExchange(ref _writing, 1, 0) == 0)

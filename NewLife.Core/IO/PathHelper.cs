@@ -1,8 +1,8 @@
 ﻿using System.Collections.Generic;
-using System.Text;
-using NewLife.IO;
 using System.IO.Compression;
+using System.Text;
 using NewLife.Compression;
+using NewLife.IO;
 
 namespace System.IO
 {
@@ -10,8 +10,41 @@ namespace System.IO
     public static class PathHelper
     {
         #region 属性
-        /// <summary>基础目录。GetFullPath依赖于此，默认为当前应用程序域基础目录</summary>
-        public static String BaseDirectory { get; set; } = AppDomain.CurrentDomain.BaseDirectory;
+        /// <summary>基础目录。GetBasePath依赖于此，默认为当前应用程序域基础目录。用于X组件内部各目录，专门为函数计算而定制</summary>
+        /// <remarks>
+        /// 为了适应函数计算，该路径将支持从命令行参数和环境变量读取
+        /// </remarks>
+        public static String BasePath { get; set; }
+
+        /// <summary>基础目录。GetBasePath依赖于此，默认为当前应用程序域基础目录。已弃用，请使用BasePath</summary>
+        /// <remarks>
+        /// 为了适应函数计算，该路径将支持从命令行参数和环境变量读取
+        /// </remarks>
+        [Obsolete("=>BasePath")]
+        public static String BaseDirectory { get => BasePath; set => BasePath = value; }
+
+        #endregion
+
+        #region 静态构造
+        static PathHelper()
+        {
+            var dir = "";
+            var args = Environment.GetCommandLineArgs();
+            for (var i = 0; i < args.Length; i++)
+            {
+                if (args[i].EqualIgnoreCase("-BasePath", "--BasePath") && i + 1 < args.Length)
+                {
+                    dir = args[i + 1];
+                    break;
+                }
+            }
+            if (dir.IsNullOrEmpty()) dir = Environment.GetEnvironmentVariable("BasePath");
+
+            // 最终取应用程序域
+            if (dir.IsNullOrEmpty()) dir = AppDomain.CurrentDomain.BaseDirectory;
+
+            BasePath = GetPath(dir, 1);
+        }
         #endregion
 
         #region 路径操作辅助
@@ -26,10 +59,10 @@ namespace System.IO
             switch (mode)
             {
                 case 1:
-                    dir = BaseDirectory;
+                    dir = AppDomain.CurrentDomain.BaseDirectory;
                     break;
                 case 2:
-                    dir = AppDomain.CurrentDomain.BaseDirectory;
+                    dir = BasePath;
                     break;
                 case 3:
                     dir = Environment.CurrentDirectory;
@@ -40,7 +73,7 @@ namespace System.IO
             if (dir.IsNullOrEmpty()) return Path.GetFullPath(path);
 
             // 处理网络路径
-            if (path.StartsWith(@"\\")) return Path.GetFullPath(path);
+            if (path.StartsWith(@"\\", StringComparison.Ordinal)) return Path.GetFullPath(path);
 
             // 考虑兼容Linux
             if (!NewLife.Runtime.Mono)
@@ -71,7 +104,7 @@ namespace System.IO
             return Path.GetFullPath(path);
         }
 
-        /// <summary>获取文件或目录的全路径，过滤相对目录</summary>
+        /// <summary>获取文件或目录基于应用程序域基目录的全路径，过滤相对目录</summary>
         /// <remarks>不确保目录后面一定有分隔符，是否有分隔符由原始路径末尾决定</remarks>
         /// <param name="path">文件或目录</param>
         /// <returns></returns>
@@ -82,7 +115,7 @@ namespace System.IO
             return GetPath(path, 1);
         }
 
-        /// <summary>获取文件或目录基于应用程序域基目录的全路径，过滤相对目录</summary>
+        /// <summary>获取文件或目录的全路径，过滤相对目录。用于X组件内部各目录，专门为函数计算而定制</summary>
         /// <remarks>不确保目录后面一定有分隔符，是否有分隔符由原始路径末尾决定</remarks>
         /// <param name="path">文件或目录</param>
         /// <returns></returns>
@@ -257,30 +290,67 @@ namespace System.IO
         }
 
         /// <summary>打开并读取</summary>
-        /// <typeparam name="T">返回类型</typeparam>
         /// <param name="file">文件信息</param>
+        /// <param name="compressed">是否压缩</param>
         /// <param name="func">要对文件流操作的委托</param>
         /// <returns></returns>
-        public static T OpenRead<T>(this FileInfo file, Func<FileStream, T> func)
+        public static Int64 OpenRead(this FileInfo file, Boolean compressed, Action<Stream> func)
         {
-            using (var fs = file.OpenRead())
+            if (compressed)
             {
-                return func(fs);
+                using (var fs = file.OpenRead())
+                using (var gs = new GZipStream(fs, CompressionMode.Decompress, true))
+                {
+                    func(gs);
+                    return fs.Position;
+                }
+            }
+            else
+            {
+                using (var fs = file.OpenRead())
+                {
+                    func(fs);
+                    return fs.Position;
+                }
             }
         }
 
         /// <summary>打开并写入</summary>
-        /// <typeparam name="T">返回类型</typeparam>
         /// <param name="file">文件信息</param>
+        /// <param name="compressed">是否压缩</param>
         /// <param name="func">要对文件流操作的委托</param>
         /// <returns></returns>
-        public static T OpenWrite<T>(this FileInfo file, Func<FileStream, T> func)
+        public static Int64 OpenWrite(this FileInfo file, Boolean compressed, Action<Stream> func)
         {
             file.FullName.EnsureDirectory(true);
 
-            using (var fs = file.OpenWrite())
+            if (compressed)
             {
-                return func(fs);
+                using (var fs = file.OpenWrite())
+#if NET4
+                using (var gs = new GZipStream(fs, CompressionMode.Compress, true))
+#else
+                using (var gs = new GZipStream(fs, CompressionLevel.Optimal, true))
+#endif
+                {
+                    func(gs);
+
+                    gs.Flush();
+                    fs.SetLength(fs.Position);
+
+                    return fs.Position;
+                }
+            }
+            else
+            {
+                using (var fs = file.OpenWrite())
+                {
+                    func(fs);
+
+                    fs.SetLength(fs.Position);
+
+                    return fs.Position;
+                }
             }
         }
 

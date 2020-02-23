@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Threading.Tasks;
 using NewLife.Collections;
 
 namespace NewLife.IO
@@ -52,17 +53,17 @@ namespace NewLife.IO
 
         /// <summary>销毁</summary>
         /// <param name="disposing"></param>
-        protected override void OnDispose(Boolean disposing)
+        protected override void Dispose(Boolean disposing)
         {
-            base.OnDispose(disposing);
+            base.Dispose(disposing);
 
             _reader.TryDispose();
 
-            _writer?.Flush();
+            //_writer?.Flush();
+            _writer.TryDispose();
 
             if (!_leaveOpen && _stream != null)
             {
-                _writer.TryDispose();
                 _stream.Close();
             }
         }
@@ -158,6 +159,26 @@ namespace NewLife.IO
         {
             EnsureWriter();
 
+            var str = BuildLine(line);
+
+            _writer.WriteLine(str);
+        }
+
+#if !NET4
+        /// <summary>异步写入一行</summary>
+        /// <param name="line"></param>
+        public async Task WriteLineAsync(IEnumerable<Object> line)
+        {
+            EnsureWriter();
+
+            var str = BuildLine(line);
+
+            await _writer.WriteLineAsync(str);
+        }
+#endif
+
+        private String BuildLine(IEnumerable<Object> line)
+        {
             var sb = Pool.StringBuilder.Get();
 
             foreach (var item in line)
@@ -174,13 +195,17 @@ namespace NewLife.IO
                     sb.Append(str);
             }
 
-            _writer.WriteLine(sb.Put(true));
+            return sb.Put(true);
         }
 
         private StreamWriter _writer;
         private void EnsureWriter()
         {
+#if NET4
             if (_writer == null) _writer = new StreamWriter(_stream, Encoding);
+#else
+            if (_writer == null) _writer = new StreamWriter(_stream, Encoding, 1024, true);
+#endif
         }
         #endregion
     }

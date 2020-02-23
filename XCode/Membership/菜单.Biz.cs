@@ -2,15 +2,13 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
-using System.Text;
-using System.Web;
+using System.Runtime.Serialization;
 using System.Web.Script.Serialization;
 using System.Xml.Serialization;
-using NewLife;
+using NewLife.Collections;
 using NewLife.Log;
 using NewLife.Model;
 using NewLife.Reflection;
-using NewLife.Collections;
 using NewLife.Threading;
 
 namespace XCode.Membership
@@ -26,7 +24,7 @@ namespace XCode.Membership
         #region 对象操作
         static Menu()
         {
-            var entity = new TEntity();
+            new TEntity();
 
             EntityFactory.Register(typeof(TEntity), new MenuFactory());
 
@@ -84,23 +82,21 @@ namespace XCode.Membership
 
             // 递归删除子菜单
             var rs = 0;
-            using (var ts = Meta.CreateTrans())
+            using var ts = Meta.CreateTrans();
+            rs += base.OnDelete();
+
+            var ms = Childs;
+            if (ms != null && ms.Count > 0)
             {
-                rs += base.OnDelete();
-
-                var ms = Childs;
-                if (ms != null && ms.Count > 0)
+                foreach (var item in ms)
                 {
-                    foreach (var item in ms)
-                    {
-                        rs += item.Delete();
-                    }
+                    rs += item.Delete();
                 }
-
-                ts.Commit();
-
-                return rs;
             }
+
+            ts.Commit();
+
+            return rs;
         }
 
         /// <summary>加载权限字典</summary>
@@ -124,11 +120,11 @@ namespace XCode.Membership
 
         #region 扩展属性
         /// <summary></summary>
-        [XmlIgnore, ScriptIgnore]
+        [XmlIgnore, ScriptIgnore, IgnoreDataMember]
         public String Url2 => Url?.Replace("~", "");
 
         /// <summary>父菜单名</summary>
-        [XmlIgnore, ScriptIgnore]
+        [XmlIgnore, ScriptIgnore, IgnoreDataMember]
         public virtual String ParentMenuName { get { return Parent?.Name; } set { } }
 
         /// <summary>必要的菜单。必须至少有角色拥有这些权限，如果没有则自动授权给系统角色</summary>
@@ -146,7 +142,7 @@ namespace XCode.Membership
         }
 
         /// <summary>友好名称。优先显示名</summary>
-        [XmlIgnore, ScriptIgnore]
+        [XmlIgnore, ScriptIgnore, IgnoreDataMember]
         public String FriendName => DisplayName.IsNullOrWhiteSpace() ? Name : DisplayName;
         #endregion
 
@@ -223,7 +219,7 @@ namespace XCode.Membership
                 FullName = fullName,
                 Url = url,
                 ParentID = ID,
-                Parent = this as TEntity,
+                //Parent = this as TEntity,
 
                 Visible = ID == 0 || displayName != null
             };
@@ -236,7 +232,7 @@ namespace XCode.Membership
 
         #region 扩展权限
         /// <summary>可选权限子项</summary>
-        [XmlIgnore, ScriptIgnore]
+        [XmlIgnore, ScriptIgnore, IgnoreDataMember]
         public Dictionary<Int32, String> Permissions { get; set; } = new Dictionary<Int32, String>();
 
         void LoadPermission()

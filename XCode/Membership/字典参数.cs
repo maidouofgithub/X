@@ -11,7 +11,7 @@ namespace XCode.Membership
     [Serializable]
     [DataObject]
     [Description("字典参数")]
-    [BindIndex("IU_Parameter_Category_Name", true, "Category,Name")]
+    [BindIndex("IU_Parameter_UserID_Category_Name", true, "UserID,Category,Name")]
     [BindIndex("IX_Parameter_Name", false, "Name")]
     [BindIndex("IX_Parameter_UpdateTime", false, "UpdateTime")]
     [BindTable("Parameter", Description = "字典参数", ConnName = "Membership", DbType = DatabaseType.None)]
@@ -25,6 +25,14 @@ namespace XCode.Membership
         [DataObjectField(true, true, false, 0)]
         [BindColumn("ID", "编号", "")]
         public Int32 ID { get { return _ID; } set { if (OnPropertyChanging(__.ID, value)) { _ID = value; OnPropertyChanged(__.ID); } } }
+
+        private Int32 _UserID;
+        /// <summary>用户。按用户区分参数，用户0表示系统级</summary>
+        [DisplayName("用户")]
+        [Description("用户。按用户区分参数，用户0表示系统级")]
+        [DataObjectField(false, false, false, 0)]
+        [BindColumn("UserID", "用户。按用户区分参数，用户0表示系统级", "")]
+        public Int32 UserID { get { return _UserID; } set { if (OnPropertyChanging(__.UserID, value)) { _UserID = value; OnPropertyChanged(__.UserID); } } }
 
         private String _Category;
         /// <summary>类别</summary>
@@ -123,11 +131,11 @@ namespace XCode.Membership
         public String Ex6 { get { return _Ex6; } set { if (OnPropertyChanging(__.Ex6, value)) { _Ex6 = value; OnPropertyChanged(__.Ex6); } } }
 
         private String _CreateUser;
-        /// <summary>创建用户</summary>
-        [DisplayName("创建用户")]
-        [Description("创建用户")]
+        /// <summary>创建者</summary>
+        [DisplayName("创建者")]
+        [Description("创建者")]
         [DataObjectField(false, false, true, 50)]
-        [BindColumn("CreateUser", "创建用户", "")]
+        [BindColumn("CreateUser", "创建者", "")]
         public String CreateUser { get { return _CreateUser; } set { if (OnPropertyChanging(__.CreateUser, value)) { _CreateUser = value; OnPropertyChanged(__.CreateUser); } } }
 
         private Int32 _CreateUserID;
@@ -155,11 +163,11 @@ namespace XCode.Membership
         public DateTime CreateTime { get { return _CreateTime; } set { if (OnPropertyChanging(__.CreateTime, value)) { _CreateTime = value; OnPropertyChanged(__.CreateTime); } } }
 
         private String _UpdateUser;
-        /// <summary>更新用户</summary>
-        [DisplayName("更新用户")]
-        [Description("更新用户")]
+        /// <summary>更新者</summary>
+        [DisplayName("更新者")]
+        [Description("更新者")]
         [DataObjectField(false, false, true, 50)]
-        [BindColumn("UpdateUser", "更新用户", "")]
+        [BindColumn("UpdateUser", "更新者", "")]
         public String UpdateUser { get { return _UpdateUser; } set { if (OnPropertyChanging(__.UpdateUser, value)) { _UpdateUser = value; OnPropertyChanged(__.UpdateUser); } } }
 
         private Int32 _UpdateUserID;
@@ -206,6 +214,7 @@ namespace XCode.Membership
                 switch (name)
                 {
                     case __.ID : return _ID;
+                    case __.UserID : return _UserID;
                     case __.Category : return _Category;
                     case __.Name : return _Name;
                     case __.Value : return _Value;
@@ -235,6 +244,7 @@ namespace XCode.Membership
                 switch (name)
                 {
                     case __.ID : _ID = value.ToInt(); break;
+                    case __.UserID : _UserID = value.ToInt(); break;
                     case __.Category : _Category = Convert.ToString(value); break;
                     case __.Name : _Name = Convert.ToString(value); break;
                     case __.Value : _Value = Convert.ToString(value); break;
@@ -268,6 +278,9 @@ namespace XCode.Membership
         {
             /// <summary>编号</summary>
             public static readonly Field ID = FindByName(__.ID);
+
+            /// <summary>用户。按用户区分参数，用户0表示系统级</summary>
+            public static readonly Field UserID = FindByName(__.UserID);
 
             /// <summary>类别</summary>
             public static readonly Field Category = FindByName(__.Category);
@@ -305,7 +318,7 @@ namespace XCode.Membership
             /// <summary>扩展6</summary>
             public static readonly Field Ex6 = FindByName(__.Ex6);
 
-            /// <summary>创建用户</summary>
+            /// <summary>创建者</summary>
             public static readonly Field CreateUser = FindByName(__.CreateUser);
 
             /// <summary>创建用户</summary>
@@ -317,7 +330,7 @@ namespace XCode.Membership
             /// <summary>创建时间</summary>
             public static readonly Field CreateTime = FindByName(__.CreateTime);
 
-            /// <summary>更新用户</summary>
+            /// <summary>更新者</summary>
             public static readonly Field UpdateUser = FindByName(__.UpdateUser);
 
             /// <summary>更新用户</summary>
@@ -340,6 +353,9 @@ namespace XCode.Membership
         {
             /// <summary>编号</summary>
             public const String ID = "ID";
+
+            /// <summary>用户。按用户区分参数，用户0表示系统级</summary>
+            public const String UserID = "UserID";
 
             /// <summary>类别</summary>
             public const String Category = "Category";
@@ -377,7 +393,7 @@ namespace XCode.Membership
             /// <summary>扩展6</summary>
             public const String Ex6 = "Ex6";
 
-            /// <summary>创建用户</summary>
+            /// <summary>创建者</summary>
             public const String CreateUser = "CreateUser";
 
             /// <summary>创建用户</summary>
@@ -389,7 +405,7 @@ namespace XCode.Membership
             /// <summary>创建时间</summary>
             public const String CreateTime = "CreateTime";
 
-            /// <summary>更新用户</summary>
+            /// <summary>更新者</summary>
             public const String UpdateUser = "UpdateUser";
 
             /// <summary>更新用户</summary>
@@ -413,6 +429,9 @@ namespace XCode.Membership
         #region 属性
         /// <summary>编号</summary>
         Int32 ID { get; set; }
+
+        /// <summary>用户。按用户区分参数，用户0表示系统级</summary>
+        Int32 UserID { get; set; }
 
         /// <summary>类别</summary>
         String Category { get; set; }
@@ -450,7 +469,7 @@ namespace XCode.Membership
         /// <summary>扩展6</summary>
         String Ex6 { get; set; }
 
-        /// <summary>创建用户</summary>
+        /// <summary>创建者</summary>
         String CreateUser { get; set; }
 
         /// <summary>创建用户</summary>
@@ -462,7 +481,7 @@ namespace XCode.Membership
         /// <summary>创建时间</summary>
         DateTime CreateTime { get; set; }
 
-        /// <summary>更新用户</summary>
+        /// <summary>更新者</summary>
         String UpdateUser { get; set; }
 
         /// <summary>更新用户</summary>

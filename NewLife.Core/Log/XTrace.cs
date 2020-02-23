@@ -3,12 +3,13 @@ using System.Reflection;
 using System.Runtime.Versioning;
 using System.Threading;
 using System.Threading.Tasks;
-#if !__CORE__
+#if __WIN__
 using System.Windows.Forms;
 #endif
 using NewLife.Reflection;
 using NewLife.Threading;
 
+#nullable enable
 namespace NewLife.Log
 {
     /// <summary>日志类，包含跟踪调试功能</summary>
@@ -22,7 +23,7 @@ namespace NewLife.Log
     {
         #region 写日志
         /// <summary>文本文件日志</summary>
-        private static ILog _Log;
+        private static ILog _Log = Logger.Null;
         /// <summary>日志提供者，默认使用文本文件日志</summary>
         public static ILog Log { get { InitLog(); return _Log; } set { _Log = value; } }
 
@@ -32,15 +33,19 @@ namespace NewLife.Log
         {
             if (!InitLog()) return;
 
+            WriteVersion();
+
             Log.Info(msg);
         }
 
         /// <summary>写日志</summary>
         /// <param name="format"></param>
         /// <param name="args"></param>
-        public static void WriteLine(String format, params Object[] args)
+        public static void WriteLine(String format, params Object?[] args)
         {
             if (!InitLog()) return;
+
+            WriteVersion();
 
             Log.Info(format, args);
         }
@@ -59,6 +64,8 @@ namespace NewLife.Log
         {
             if (!InitLog()) return;
 
+            WriteVersion();
+
             Log.Error("{0}", ex);
         }
         #endregion
@@ -71,9 +78,10 @@ namespace NewLife.Log
 
             ThreadPoolX.Init();
         }
+
         static void CurrentDomain_UnhandledException(Object sender, UnhandledExceptionEventArgs e)
         {
-            WriteException(e.ExceptionObject as Exception);
+            if (e.ExceptionObject is Exception ex) WriteException(ex);
             if (e.IsTerminating) Log.Fatal("异常退出！");
         }
 
@@ -108,12 +116,12 @@ namespace NewLife.Log
              * 6，正常写入日志
              */
 
-            if (_Log != null) return true;
+            if (_Log != null && _Log != Logger.Null) return true;
             if (_initing > 0 && _initing == Thread.CurrentThread.ManagedThreadId) return false;
 
             lock (_lock)
             {
-                if (_Log != null) return true;
+                if (_Log != null && _Log != Logger.Null) return true;
 
                 _initing = Thread.CurrentThread.ManagedThreadId;
                 _Log = TextFileLog.Create(LogPath);
@@ -128,7 +136,7 @@ namespace NewLife.Log
                 _initing = 0;
             }
 
-            WriteVersion();
+            //WriteVersion();
 
             return true;
         }
@@ -144,7 +152,8 @@ namespace NewLife.Log
             if (_useConsole) return;
             _useConsole = true;
 
-            if (!Runtime.IsConsole) return;
+            //if (!Runtime.IsConsole) return;
+            Runtime.IsConsole = true;
 
             // 适当加大控制台窗口
             try
@@ -172,6 +181,8 @@ namespace NewLife.Log
         /// <param name="showErrorMessage">发为捕获异常时，是否显示提示，默认显示</param>
         public static void UseWinForm(Boolean showErrorMessage = true)
         {
+            Runtime.IsConsole = false;
+
             _ShowErrorMessage = showErrorMessage;
 
             if (initWF > 0 || Interlocked.CompareExchange(ref initWF, 1, 0) != 0) return;
@@ -237,7 +248,7 @@ namespace NewLife.Log
         /// <returns></returns>
         public static ILog Combine(this Control control, ILog log, Int32 maxLines = 1000)
         {
-            if (control == null || log == null) return log;
+            //if (control == null || log == null) return log;
 
             var clg = new TextControlLog
             {
@@ -262,9 +273,12 @@ namespace NewLife.Log
         #endregion
 
         #region 版本信息
+        private static Int32 _writeVersion;
         /// <summary>输出核心库和启动程序的版本号</summary>
         public static void WriteVersion()
         {
+            if (_writeVersion > 0 || Interlocked.CompareExchange(ref _writeVersion, 1, 0) != 0) return;
+
             var asm = Assembly.GetExecutingAssembly();
             WriteVersion(asm);
 
@@ -293,3 +307,4 @@ namespace NewLife.Log
         #endregion
     }
 }
+#nullable restore

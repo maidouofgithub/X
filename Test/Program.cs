@@ -2,16 +2,18 @@
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
-using System.IO.Compression;
 using System.Linq;
+using System.Net.Http;
+using System.Runtime.InteropServices;
+using System.Security.Authentication;
+using System.Security.Cryptography.X509Certificates;
 using System.Threading;
 using System.Threading.Tasks;
 using NewLife;
 using NewLife.Caching;
-using NewLife.Core.Collections;
-using NewLife.Http;
 using NewLife.Log;
 using NewLife.Net;
+using NewLife.Reflection;
 using NewLife.Remoting;
 using NewLife.Security;
 using NewLife.Serialization;
@@ -19,6 +21,7 @@ using XCode.Code;
 using XCode.DataAccessLayer;
 using XCode.Membership;
 using XCode.Service;
+using NewLife.Http;
 #if !NET4
 using TaskEx = System.Threading.Tasks.Task;
 #endif
@@ -29,6 +32,9 @@ namespace Test
     {
         private static void Main(String[] args)
         {
+            Environment.SetEnvironmentVariable("DOTNET_SYSTEM_GLOBALIZATION_INVARIANT", "1");
+
+            MachineInfo.RegisterAsync(5_000);
             //XTrace.Log = new NetworkLog();
             XTrace.UseConsole();
 #if DEBUG
@@ -41,7 +47,7 @@ namespace Test
                 try
                 {
 #endif
-                Test3();
+                Test2();
 #if !DEBUG
                 }
                 catch (Exception ex)
@@ -60,65 +66,60 @@ namespace Test
             }
         }
 
-        static async void Test1()
+        static void Test1()
         {
-            var url = "http://www.newlifex.com/";
-            //var url = "https://www.baidu.com/";
-            var client = new TinyHttpClient();
-            var html = await client.GetStringAsync(url);
-            Console.WriteLine(html);
+            XTrace.WriteLine("FullPath:{0}", ".".GetFullPath());
+            XTrace.WriteLine("BasePath:{0}", ".".GetBasePath());
+
+            var mi = new MachineInfo();
+            mi.Init();
+
+            foreach (var pi in mi.GetType().GetProperties())
+            {
+                XTrace.WriteLine("{0}:\t{1}", pi.Name, mi.GetValue(pi));
+            }
+
+            Console.WriteLine();
+
+#if __CORE__
+            foreach (var pi in typeof(RuntimeInformation).GetProperties())
+            {
+                XTrace.WriteLine("{0}:\t{1}", pi.Name, pi.GetValue(null));
+            }
+#endif
+
+            //Console.WriteLine();
+
+            //foreach (var pi in typeof(Environment).GetProperties())
+            //{
+            //    XTrace.WriteLine("{0}:\t{1}", pi.Name, pi.GetValue(null));
+            //}
+
+            mi = MachineInfo.Current;
+            for (var i = 0; i < 100; i++)
+            {
+                XTrace.WriteLine("{0} {1} {2}", mi.CpuRate, mi.Temperature, (Double)mi.AvailableMemory / 1024 / 1024);
+                Thread.Sleep(1000);
+            }
+
+            Console.ReadKey();
         }
 
-        static void Test2()
+        static async void Test2()
         {
-            //DAL.AddConnStr("Log", "Data Source=tcp://127.0.0.1/ORCL;User Id=scott;Password=tiger;UseParameter=true", null, "Oracle");
-            //DAL.AddConnStr("Log", "Server=.;Port=3306;Database=Log;Uid=root;Pwd=root;", null, "MySql");
-            //DAL.AddConnStr("Membership", "Server=.;Port=3306;Database=times;Uid=root;Pwd=Pass@word;TablePrefix=xx_", null, "MySql");
-            //DAL.AddConnStr("Membership", @"Server=.\JSQL2008;User ID=sa;Password=sa;Database=Membership;", null, "sqlserver");
-            //DAL.AddConnStr("Log", @"Server=.\JSQL2008;User ID=sa;Password=sa;Database=Log;", null, "sqlserver");
+            var count = Role.Meta.Count;
 
-            UserX.Meta.Session.Dal.Db.ShowSQL = true;
-            Log.Meta.Session.Dal.Db.ShowSQL = true;
+            var dal = Role.Meta.Session.Dal;
+            var db = dal.Query("select * from role");
+            var json = db.ToJson(true, false, true);
+            XTrace.WriteLine(json);
 
-            var gs = UserX.FindAll(null, null, null, 0, 10);
-            var count = UserX.FindCount();
-            Console.WriteLine("Count={0}", count);
+            json = db.ToJson();
+            XTrace.WriteLine(json);
 
-            LogProvider.Provider.WriteLog("test", "新增", "学无先后达者为师");
-            LogProvider.Provider.WriteLog("test", "新增", "学无先后达者为师");
-            LogProvider.Provider.WriteLog("test", "新增", "学无先后达者为师");
-
-            var list = new List<UserX>();
-            for (var i = 0; i < 4; i++)
-            {
-                var entity = new UserX
-                {
-                    Name = "Stone" + i,
-                    DisplayName = "大石头" + i,
-                    Logins = 1,
-                    LastLogin = DateTime.Now,
-                    RegisterTime = DateTime.Now
-                };
-                list.Add(entity);
-                entity.SaveAsync();
-                //entity.InsertOrUpdate();
-            }
-            //list.Save();
-
-            var user = gs.FirstOrDefault();
-            if (user != null)
-            {
-                user.Logins++;
-                user.SaveAsync();
-            }
-
-            Thread.Sleep(3000);
-
-            count = UserX.FindCount();
-            Console.WriteLine("Count={0}", count);
-            //gs = UserX.FindAll(null, null, null, 0, 10);
-
-            //gs.Delete(true);
+            db = dal.Query("select id,name,enable 启用 from role");
+            json = db.ToJson(true, false, true);
+            XTrace.WriteLine(json);
         }
 
         static void Test3()
@@ -148,7 +149,7 @@ namespace Test
             }
             else
             {
-                var client = new ApiClient("tcp://127.0.0.1:1234")
+                var client = new ApiClient("tcp://127.0.0.1:335,tcp://127.0.0.1:1234")
                 {
                     Log = XTrace.Log,
                     //EncoderLog = XTrace.Log,
@@ -259,7 +260,9 @@ namespace Test
                     ch = new DbCache();
                     break;
                 case '3':
-                    ch = Redis.Create("127.0.0.1", 9);
+                    var rds = new Redis("127.0.0.1", null, 9);
+                    rds.Counter = new PerfCounter();
+                    ch = rds;
                     break;
             }
 
@@ -268,9 +271,20 @@ namespace Test
             Console.Write("选择测试模式：1，顺序；2，随机 ");
             if (Console.ReadKey().KeyChar != '1') mode = true;
 
+            var batch = 0;
+            Console.WriteLine();
+            Console.Write("选择输入批大小[0]：");
+            batch = Console.ReadLine().ToInt();
+
             Console.Clear();
 
-            ch.Bench(mode);
+            //var batch = 0;
+            //if (mode) batch = 1000;
+
+            var rs = ch.Bench(mode, batch);
+
+            XTrace.WriteLine("总测试数据：{0:n0}", rs);
+            if (ch is Redis rds2) XTrace.WriteLine(rds2.Counter + "");
         }
 
         static void Test5()
@@ -360,80 +374,68 @@ namespace Test
 
         static void Test6()
         {
-            // 缓存默认实现Cache.Default是MemoryCache，可修改
-            //var ic = Cache.Default;
-            //var ic = new MemoryCache();
+            var pfx = new X509Certificate2("../newlife.pfx", "newlife");
+            //Console.WriteLine(pfx);
 
-            // 实例化Redis，默认端口6379可以省略，密码有两种写法
-            //var ic = Redis.Create("127.0.0.1", 7);
-            //var ic = Redis.Create("pass@127.0.0.1:6379", 7);
-            var ic = Redis.Create("server=127.0.0.1:6379;password=newlife", 7);
-            ic.Log = XTrace.Log; // 调试日志。正式使用时注释
+            //using var svr = new ApiServer(1234);
+            //svr.Log = XTrace.Log;
+            //svr.EncoderLog = XTrace.Log;
 
-            var user = new User { Name = "NewLife", CreateTime = DateTime.Now };
-            ic.Set("user", user, 3600);
-            var user2 = ic.Get<User>("user");
-            XTrace.WriteLine("Json: {0}", ic.Get<String>("user"));
-            if (ic.ContainsKey("user")) XTrace.WriteLine("存在！");
-            ic.Remove("user");
+            //var ns = svr.EnsureCreate() as NetServer;
 
-            var dic = new Dictionary<String, Object>
+            using var ns = new NetServer(1234)
             {
-                ["name"] = "NewLife",
-                ["time"] = DateTime.Now,
-                ["count"] = 1234
+                Name = "Server",
+                ProtocolType = NetType.Tcp,
+                Log = XTrace.Log,
+                SessionLog = XTrace.Log,
+                SocketLog = XTrace.Log,
+                LogReceive = true
             };
-            ic.SetAll(dic, 120);
 
-            var vs = ic.GetAll<String>(dic.Keys);
-            XTrace.WriteLine(vs.Join(",", e => $"{e.Key}={e.Value}"));
-
-            var flag = ic.Add("count", 5678);
-            XTrace.WriteLine(flag ? "Add成功" : "Add失败");
-            var ori = ic.Replace("count", 777);
-            var count = ic.Get<Int32>("count");
-            XTrace.WriteLine("count由{0}替换为{1}", ori, count);
-
-            ic.Increment("count", 11);
-            var count2 = ic.Decrement("count", 10);
-            XTrace.WriteLine("count={0}", count2);
-
-            //var inf = ic.GetInfo();
-            //foreach (var item in inf)
-            //{
-            //    Console.WriteLine("{0}:\t{1}", item.Key, item.Value);
-            //}
-
-            for (var i = 0; i < 20; i++)
+            ns.EnsureCreateServer();
+            foreach (var item in ns.Servers)
             {
-                try
-                {
-                    ic.Set("k" + i, i, 30);
-                }
-                catch (Exception ex)
-                {
-                    //XTrace.WriteException(ex);
-                    XTrace.WriteLine(ex.Message);
-                }
-                Thread.Sleep(3_000);
+                if (item is TcpServer ts) ts.Certificate = pfx;
             }
 
-            //ic.Bench();
-        }
+            ns.Received += (s, e) =>
+            {
+                XTrace.WriteLine("收到：{0}", e.Packet.ToStr());
+            };
+            ns.Start();
 
-        class User
-        {
-            public String Name { get; set; }
-            public DateTime CreateTime { get; set; }
+            using var client = new TcpSession
+            {
+                Name = "Client",
+                Remote = new NetUri("tcp://127.0.0.1:1234"),
+                SslProtocol = SslProtocols.Tls,
+                Log = XTrace.Log,
+                LogSend = true
+            };
+            client.Open();
+
+            client.Send("Stone");
+
+            Console.ReadLine();
         }
 
         static void Test7()
         {
+#if __CORE__
+            XTrace.WriteLine(RuntimeInformation.OSDescription);
+#endif
+
+            //DAL.AddConnStr("membership", "Server=10.0.0.3;Port=3306;Database=Membership;Uid=root;Pwd=Pass@word;", null, "mysql");
+
             Role.Meta.Session.Dal.Db.ShowSQL = true;
             Role.Meta.Session.Dal.Expire = 10;
-            Role.Meta.Session.Dal.Db.Readonly = true;
+            //Role.Meta.Session.Dal.Db.Readonly = true;
 
             var list = Role.FindAll();
+            Console.WriteLine(list.Count);
+
+            list = Role.FindAll(Role._.Name.NotContains("abc"));
             Console.WriteLine(list.Count);
 
             Thread.Sleep(1000);
@@ -453,13 +455,21 @@ namespace Test
             Console.WriteLine(list.Count);
         }
 
-        static void Test8()
+        static async void Test8()
         {
-            var ss = new String[8];
-            ss[1] = "Stone";
-            ss[3] = "NewLife";
-            var str = ss.Join();
-            Console.WriteLine(str);
+            var url = "http://www.mca.gov.cn/article/sj/xzqh/2019/2019/201912251506.html";
+            var file = "area.html".GetFullPath();
+            if (!File.Exists(file))
+            {
+                var http = new HttpClient();
+                await http.DownloadFileAsync(url, file);
+            }
+
+            var txt = File.ReadAllText(file);
+            foreach (var item in Area.Parse(txt))
+            {
+                XTrace.WriteLine("{0} {1}", item.ID, item.Name);
+            }
         }
 
         static async void Test9()

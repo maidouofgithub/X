@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
-using NewLife.Collections;
 using NewLife.Log;
 using NewLife.Reflection;
 using NewLife.Threading;
@@ -31,6 +30,24 @@ namespace XCode
         /// <returns></returns>
         public Object this[String key] { get => Get<Object>(key); set => Set(key, value); }
 
+        /// <summary>尝试获取</summary>
+        /// <param name="key"></param>
+        /// <param name="value"></param>
+        /// <returns></returns>
+        public Boolean TryGetValue(String key, out Object value)
+        {
+            value = null;
+            if (_cache == null) return false;
+
+            var rs = _cache.TryGetValue(key, out var ci);
+            if (rs)
+                value = ci?.Value;
+            else
+                value = null;
+
+            return rs;
+        }
+
         /// <summary>扩展获取数据项，当数据项不存在时，通过调用委托获取数据项。线程安全。</summary>
         /// <param name="key">键</param>
         /// <param name="func">获取值的委托，该委托以键作为参数</param>
@@ -38,18 +55,18 @@ namespace XCode
         public virtual T Get<T>(String key, Func<String, T> func = null)
         {
             //if (func == null) throw new ArgumentNullException(nameof(func));
-            if (key == null) return default(T);
+            if (key == null) return default;
 
             // 不能使用并行字段，那会造成内存暴涨，因为大多数实体对象没有或者只有很少扩展数据
             var dic = _cache;
             if (dic == null)
             {
-                if (func == null) return default(T);
+                if (func == null) return default;
 
                 dic = _cache = new Dictionary<String, CacheItem>(StringComparer.OrdinalIgnoreCase);
             }
 
-            CacheItem ci = null;
+            CacheItem ci;
             try
             {
                 // 比较小几率出现多线程问题
@@ -62,7 +79,7 @@ namespace XCode
                 // 只有指定func时才使用过期
                 if (dic.TryGetValue(key, out ci) && (func == null || !ci.Expired)) return ci.Value.ChangeType<T>();
 
-                if (func == null) return default(T);
+                if (func == null) return default;
 
                 var value = func(key);
 
@@ -114,10 +131,10 @@ namespace XCode
             return true;
         }
 
-        /// <summary>是否已存在</summary>
-        /// <param name="key"></param>
-        /// <returns></returns>
-        public Boolean ContainsKey(String key) => _cache != null && _cache.ContainsKey(key);
+        ///// <summary>是否已存在</summary>
+        ///// <param name="key"></param>
+        ///// <returns></returns>
+        //public Boolean ContainsKey(String key) => _cache != null && _cache.ContainsKey(key);
 
         /// <summary>赋值到目标缓存</summary>
         /// <param name="target"></param>

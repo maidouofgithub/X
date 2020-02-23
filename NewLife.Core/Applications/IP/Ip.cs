@@ -2,26 +2,27 @@
 using System.IO;
 using System.Linq;
 using System.Net;
-using System.Threading.Tasks;
 using NewLife.Log;
 using NewLife.Threading;
 using NewLife.Web;
 
+#nullable enable
 namespace NewLife.IP
 {
     /// <summary>IP搜索</summary>
     public static class Ip
     {
         private static readonly Object lockHelper = new Object();
-        private static Zip zip;
+        private static Zip? zip;
 
         /// <summary>数据文件</summary>
-        public static String DbFile { get; set; }
+        public static String DbFile { get; set; } = "";
 
         static Ip()
         {
-            var dir = Runtime.IsWeb ? "..\\Data" : ".";
-            var ip = dir.CombinePath("ip.gz").GetFullPath();
+            var set = Setting.Current;
+            var dir = set.DataPath;
+            var ip = dir.CombinePath("ip.gz").GetBasePath();
             if (File.Exists(ip)) DbFile = ip;
 
             // 如果本地没有IP数据库，则从网络下载
@@ -29,18 +30,18 @@ namespace NewLife.IP
             {
                 ThreadPoolX.QueueUserWorkItem(() =>
                 {
-                    var url = Setting.Current.PluginServer;
+                    var url = set.PluginServer;
                     XTrace.WriteLine("没有找到IP数据库{0}，准备联网获取 {1}", ip, url);
 
                     var client = new WebClientX
                     {
                         Log = XTrace.Log
                     };
-                    var file = client.DownloadLink(url, "ip.gz", dir.GetFullPath());
+                    var file = client.DownloadLink(url, "ip.gz", dir.GetBasePath());
 
                     if (File.Exists(file))
                     {
-                        DbFile = file.GetFullPath();
+                        DbFile = file;
                         zip = null;
                         // 让它重新初始化
                         _inited = null;
@@ -96,7 +97,7 @@ namespace NewLife.IP
         {
             if (String.IsNullOrEmpty(ip)) return "";
 
-            if (!Init()) return "";
+            if (!Init() || zip == null) return "";
 
             var ip2 = IPToUInt32(ip.Trim());
             lock (lockHelper)
@@ -112,7 +113,7 @@ namespace NewLife.IP
         {
             if (addr == null) return "";
 
-            if (!Init()) return "";
+            if (!Init() || zip == null) return "";
 
             var ip2 = (UInt32)addr.GetAddressBytes().Reverse().ToInt();
             lock (lockHelper)
@@ -147,3 +148,4 @@ namespace NewLife.IP
         public String GetAddress(IPAddress addr) => Ip.GetAddress(addr);
     }
 }
+#nullable restore
